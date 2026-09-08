@@ -1,8 +1,9 @@
 ---
 tags: [guide, obsidian, claude-code, karpathy, pkm, llm-wiki]
 created: 2026-04-12
+updated: 2026-09-07
 status: reference
-version: 1.1
+version: 1.2
 ---
 
 # Karpathy's LLM Wiki Stack — Complete Technical Blueprint
@@ -42,7 +43,7 @@ A comprehensive, build-ready reference for constructing a high-performance perso
 
 ### From Karpathy's Gist (April 2026)
 
-Karpathy introduced this pattern in a tweet and then published an *idea file* — a GitHub gist intentionally kept abstract so that any LLM agent can instantiate a version tailored to your exact setup and domain.
+Karpathy introduced this pattern in a tweet and then published an *idea file* — a GitHub gist (5,000+ stars, 5,000+ forks, unchanged since April 2026 at Revision 1) intentionally kept abstract so that any LLM agent can instantiate a version tailored to your exact setup and domain.
 
 > "Most people's experience with LLMs and documents looks like RAG: you upload a collection of files, the LLM retrieves relevant chunks at query time, and generates an answer. This works, but the LLM is rediscovering knowledge from scratch on every question. There's no accumulation."
 > — Andrej Karpathy, April 2026
@@ -346,6 +347,17 @@ Contradictions flagged: wiki/concepts/dense-vs-sparse.md (see note)
 - Cross-reference all new pages to at least 2 existing pages.
 ```
 
+### Evolution Toward Modular Schemas: The 4-Tier Hierarchy
+
+As knowledge vaults scale, maintaining a single monolithic `CLAUDE.md` can become unwieldy and consume excessive context. The ecosystem has evolved toward modular schema management using a 4-tier hierarchy:
+
+1. **User-level rules** (`~/.claude/CLAUDE.md` or global agent configs): Global behavioral traits, communication style, and senior-engineer discipline across all projects.
+2. **Project-level schema** (`./CLAUDE.md` or `./GEMINI.md`): Vault structure, core workflows (ingest, query, lint), and domain-specific conventions.
+3. **Scoped path rules** (`.claude/rules/*.md` or directory-specific configs): Granular rules active only when reading or modifying specific directories (e.g., strict append-only constraints for `wiki/`, or formatting checks for `raw/`).
+4. **Auto-memory** (`~/.claude/projects/.../memory/` or hot cache): Machine-maintained session state, frequently accessed entities, and open questions (complementing `wiki/hot.md`).
+
+This 4-tier hierarchy serves as a scaling recommendation for large schemas when single-file schemas reach context or organizational limits.
+
 ---
 
 ## 5. Core Operations: Ingest, Query, Lint
@@ -496,7 +508,7 @@ Five distinct patterns exist in the community. Choose based on your use case.
 | :--- | :--- | :--- | :--- | :--- |
 | **1. Vault as Working Dir** | Open Claude Code directly in vault root | Simplest setup; CLAUDE.md auto-loaded | Wiki and dev files in same space | Personal knowledge base (recommended default) |
 | **2. Symlinked Docs** | `ln -s ~/vault/wiki ./docs` from a project repo | Unified search across code + notes | Mobile sync issues; recursive indexing risk | Developer documentation wikis |
-| **3. MCP Bridge** | `obsidian-claude-code-mcp` plugin, WebSocket port 22360 | Clean repo separation; remote vault access | More complex setup; extra dependency | Teams; vault on different machine |
+| **3. MCP Bridge** | `obsidian-claude-code-mcp` plugin (WebSocket port 22360), stateless HTTP/SSE transport via Local REST API plugin (v4.1.3+), or `qmd mcp` for headless setups | Clean repo separation; remote MCP support | More complex setup; extra dependency | Teams; vault on different machine; headless servers |
 | **4. One Vault Per Repo** | Separate vault per project | Simple; total isolation | No cross-project knowledge search | Isolated project wikis |
 | **5. QMD + Session Sync** | qmd MCP server + `/recall` skill | 60%+ token reduction; semantic pre-load | Requires qmd install and index build | Large vaults (200+ sources) |
 
@@ -504,14 +516,38 @@ Five distinct patterns exist in the community. Choose based on your use case.
 
 > **Symlink warning:** Symlinks can cause recursive indexing loops in Obsidian's sync engine and break mobile clients. If you use them, exclude symlinked directories from Obsidian's file watcher. Strategy 3 (MCP Bridge) is cleaner for cross-repo access.
 
+> **Strategy 3 Architecture (MCP Bridge):** Connects Claude Code or other agents to Obsidian via MCP. Supports WebSocket port 22360 or stateless HTTP/SSE transport for remote MCP setups using the Local REST API plugin (v4.1.3+). For headless server environments where the Obsidian GUI cannot run, `qmd mcp` provides a native standalone MCP server alternative.
+
+### Agent-Agnostic Compatibility
+
+While Karpathy's original gist framed the pattern around Claude Code, the LLM Wiki architecture is fundamentally agent-agnostic. Any coding agent or CLI that supports tool use, markdown instructions, and local file access can maintain the vault.
+
+The emerging ecosystem standard for cross-agent capability installation is `npx skills add` ([vercel-labs/skills](https://github.com/vercel-labs/skills)), which automatically detects and configures skills across 20+ supported agents and environments. For GitHub CLI users, `gh skill install` provides a GitHub-native alternative.
+
+| Agent | Config / Instruction File | Skill Install Command | Notes |
+| :--- | :--- | :--- | :--- |
+| **Claude Code** | `CLAUDE.md` (root or `~/.claude/`) | `/plugin marketplace add <repo>` or `npx skills add <repo>` | Native REPL slash commands or skills CLI |
+| **Gemini CLI** | `GEMINI.md` (root or `~/.gemini/`) | `npx skills add <repo>` | Native markdown context and tool execution |
+| **Cursor** | `.cursorrules` or `.cursor/rules/*.mdc` | `npx skills add <repo>` | Project rules with support for scoped path rules |
+| **Windsurf** | `.windsurfrules` | `npx skills add <repo>` | Cascade engine reads workspace rules at project root |
+| **Codex CLI** | `CODEX.md` or `.codex/config.toml` | `npx skills add <repo>` | CLI agent supporting bash tools and local filesystem edits |
+| **Aider** | `.aider.conf.yml` or `CONVENTIONS.md` | `npx skills add <repo>` | Architect/editor mode with `--read wiki/index.md` |
+
 ### Mandatory Behavioral Layer: The Karpathy Skills Plugin
 
 Regardless of the connection strategy, every LLM Wiki maintainer should install the behavioral guardrails from Karpathy's own observations on LLM coding pitfalls. This ensures the agent acts with the surgical discipline of a senior engineer.
 
-**Install via Claude Code:**
+> **Note on Claude Code v2.1+:** Plugin management commands run inside the interactive Claude Code REPL session as slash commands (e.g., `/plugin`), not as external shell commands.
+
+**Install via Claude Code (in REPL session):**
+```text
+/plugin marketplace add forrestchang/andrej-karpathy-skills
+/plugin install andrej-karpathy-skills@karpathy-skills
+```
+
+**Or install for any agent (Claude Code, Gemini CLI, Cursor, etc.):**
 ```bash
-claude plugin marketplace add forrestchang/andrej-karpathy-skills
-claude plugin install andrej-karpathy-skills@karpathy-skills
+npx skills add forrestchang/andrej-karpathy-skills
 ```
 
 This plugin enforces four core principles globally: **Think Before Coding**, **Simplicity First**, **Surgical Changes**, and **Goal-Driven Execution**.
@@ -520,7 +556,7 @@ This plugin enforces four core principles globally: **Think Before Coding**, **S
 
 ## 8. The Obsidian CLI Advantage
 
-Obsidian 1.12 introduced a native CLI that provides programmatic access to Obsidian's internal caching database — bypassing OS-level filesystem searches entirely.
+Obsidian 1.12 introduced a native CLI providing programmatic access to Obsidian's internal caching database — bypassing OS-level filesystem searches entirely. As of September 2026, Obsidian is stable at v1.13.8 (with early access v1.14.0). The CLI, introduced in v1.12, has been refined through v1.12.7 with additions including `help`, `rename`, shell autocompletion, and Unix domain socket stability fixes.
 
 ### Benchmarks: Methodology & Provenance
 
@@ -556,7 +592,7 @@ Knowledge in this stack is stored across two distinct layers:
 
 ### Step A — Install Kepano's Official Obsidian Skills (Do This First)
 
-Before installing the CLI patch, install the official skills from Obsidian's CEO (Steph Ango / Kepano). Released January 2026, this is a **44-skill repository** that teaches Claude the correct proprietary syntax for every Obsidian file type. Without it, Claude will silently break files:
+Before installing the CLI patch, install the official skills from Obsidian's CEO (Steph Ango / Kepano). Released January 2026 and now with >35,000 GitHub stars, this repository provides **5 modular skills** that teach LLM agents (Claude Code, Gemini CLI, Cursor, Windsurf, etc.) the correct proprietary syntax for every Obsidian file type. Without them, agents will silently break files:
 
 | Without `obsidian-skills` | With `obsidian-skills` |
 | :--- | :--- |
@@ -565,9 +601,15 @@ Before installing the CLI patch, install the official skills from Obsidian's CEO
 | Writes `.canvas` files that won't open | Correct JSON Canvas spatial format |
 | Guesses frontmatter format | Enforces Obsidian's exact properties syntax |
 
-**Install via Claude Code marketplace:**
+**Install via Claude Code (in REPL session):**
+```text
+/plugin marketplace add kepano/obsidian-skills
+/plugin install obsidian-skills@obsidian-skills
+```
+
+**Install for any agent via skills CLI:**
 ```bash
-claude plugin marketplace add kepano/obsidian-skills
+npx skills add kepano/obsidian-skills
 ```
 
 **Or install manually (recommended — keeps skills in your vault for offline use):**
@@ -577,18 +619,19 @@ git clone https://github.com/kepano/obsidian-skills.git /tmp/obsidian-skills
 cp -r /tmp/obsidian-skills/.claude/* .claude/
 ```
 
-**The three core skills included:**
+**The 5 modular skills included:**
 
 - **`obsidian-markdown`** — Rules for `.md` files: correct wikilink syntax, frontmatter/properties format, callout syntax, embed syntax, tag formatting, and when to use wikilinks vs standard markdown links.
 - **`obsidian-bases`** — Rules for `.base` files (Obsidian's database layer): view types, filter expressions, formula syntax, summary config. Without this, Claude generates invalid JSON that Obsidian rejects silently.
 - **`json-canvas`** — Rules for `.canvas` spatial map files: node types (`text`, `file`, `link`, `group`), edge config, position schema. Prevents Claude from writing canvas files that crash on open.
+- **`obsidian-cli`** — Syntax, flag handling, and execution rules for the Obsidian CLI.
 - **`defuddle`** — Web page cleaning skill (see Section 8c below for full coverage).
 
 > **Why this matters for the LLM Wiki specifically:** Every wiki page you build depends on correct wikilink cross-references. If Claude uses `[Concept Name](wiki/concepts/concept-name.md)` instead of `[[Concept Name]]`, your entire graph topology breaks silently — links appear correct in markdown but Obsidian's graph and backlink engine cannot parse them.
 
 ### Step B — Install the CLI Silent-Failure Patch (Mandatory for Automation)
 
-The Obsidian CLI 1.12 has **13 documented silent failures** — commands that exit with code `0` (success) but return empty or wrong data. This is the most dangerous class of bug for an automated wiki agent: Claude believes the command worked, receives no error, and proceeds with incorrect or missing information.
+The Obsidian CLI (introduced in v1.12 and through v1.12.7 / v1.13.8) has **13 documented silent failures** — commands that exit with code `0` (success) but return empty or wrong data. All 13 remain unfixed upstream; the skill patch is still required. This is the most dangerous class of bug for an automated wiki agent: Claude believes the command worked, receives no error, and proceeds with incorrect or missing information.
 
 **The 13 Silent Failures (from 57-scenario test suite, Obsidian Forum Feb 2026):**
 
@@ -610,11 +653,15 @@ The Obsidian CLI 1.12 has **13 documented silent failures** — commands that ex
 | `property:set` on locked file | Exits 0, write silently dropped | Check `property:get` to confirm |
 
 **Install the patch:**
-```bash
-# Claude Code (auto-updates)
-claude plugin marketplace add jackal092927/obsidian-official-cli-skills
 
-# Any agent (Claude Code, Codex, Cursor, 20+ others)
+**Claude Code (in REPL session):**
+```text
+/plugin marketplace add jackal092927/obsidian-official-cli-skills
+/plugin install obsidian-official-cli-skills@obsidian-skills
+```
+
+**Any agent (Claude Code, Codex, Cursor, Gemini CLI, 20+ others):**
+```bash
 npx skills add jackal092927/obsidian-official-cli-skills
 ```
 
@@ -633,7 +680,7 @@ npx skills add jackal092927/obsidian-official-cli-skills
 3. **Filesystem (grep/glob)** — fallback; works without Obsidian running but slow at scale.
 ### 8c. The Defuddle Ingestion Pre-processor
 
-Defuddle is an open-source library created by Kepano specifically for Obsidian Web Clipper. It strips web page chrome — ads, navigation bars, sidebars, comment sections, cookie banners, and footers — before content reaches your vault, leaving only the primary article content as clean markdown.
+Defuddle (v0.19.2) is an open-source library created by Kepano specifically for Obsidian Web Clipper. Following a monorepo consolidation where the CLI was merged directly into the core project, it includes the CVE-2026-61824 security patch. Defuddle strips web page chrome — ads, navigation bars, sidebars, comment sections, cookie banners, and footers — before content reaches your vault, leaving only the primary article content as clean markdown.
 
 **Why it matters: 3× Token Efficiency**
 
@@ -1052,11 +1099,11 @@ SORT date DESC
 
 ## 11. Search at Scale: qmd
 
-At small scale (~50 sources), `wiki/index.md` is sufficient. As the wiki grows, the index itself becomes too large to read in one context window. This is when you add `qmd`.
+At small scale (~50 sources), `wiki/index.md` is sufficient. As the wiki grows, the index itself becomes too large to read in one context window. This is when you add `qmd` (v2.8.3).
 
 ### What qmd Is
 
-`qmd` was built by Tobi Lütke (CEO of Shopify). It is a local, on-device search engine for markdown files combining three strategies:
+`qmd` (v2.8.3) was built by Tobi Lütke (CEO of Shopify). It is a local, on-device search engine for markdown files that requires Node.js >= 22. It features a native MCP server mode (`qmd mcp`) and combines three search strategies:
 
 - **BM25 full-text search** — keyword precision.
 - **Vector semantic search** — finds conceptually related pages even without keyword match.
@@ -1067,7 +1114,7 @@ All models run locally via `node-llama-cpp` with GGUF models. No data leaves you
 ### Install and Configure
 
 ```bash
-# Install globally
+# Install globally (Node.js >= 22 required)
 npm install -g @tobilu/qmd
 
 # Add your wiki as a named collection
@@ -1375,9 +1422,16 @@ Paste the full CLAUDE.md schema from Section 4 into `~/knowledge-vault/CLAUDE.md
 # Point Claude Code at the vault root
 cd ~/knowledge-vault
 claude init
+```
 
-# Optional: install Obsidian CLI skills
-claude plugin marketplace add jackal092927/obsidian-official-cli-skills
+Inside the Claude Code session, optionally install the Obsidian CLI skills:
+```text
+/plugin marketplace add jackal092927/obsidian-official-cli-skills
+```
+
+Or from the shell for any agent (Claude Code, Gemini CLI, Cursor, etc.):
+```bash
+npx skills add jackal092927/obsidian-official-cli-skills
 ```
 
 ### Step 5 — Bootstrap Prompt
@@ -1431,20 +1485,32 @@ The wiki is now live and compounding.
 
 | Resource | Type | Notes |
 | :--- | :--- | :--- |
-| [Karpathy's original gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Idea file | The canonical source. Copy-paste to any LLM agent. |
+| [Karpathy's original gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Idea file | The canonical source (5,000+ stars, 5,000+ forks, Revision 1). Copy-paste to any LLM agent. |
 | `forrestchang/andrej-karpathy-skills` | Claude Plugin | Mandatory behavioral layer enforcing surgical coding principles |
-| `ballred/obsidian-claude-pkm` | GitHub repo | Goal cascading (yearly/monthly/weekly) variant |
-| `huytieu/COG-second-brain` | GitHub repo | Self-evolving template with hooks |
+| `ballred/obsidian-claude-pkm` | GitHub repo | Goal cascading variant (~1,850+ stars, Goal Cascade, auto-commit hooks) |
+| `huytieu/COG-second-brain` | Multi-agent repo | Self-evolving template with hooks (33+ skills, 10 agent roles, multi-agent) |
 | `ksanderer/claude-vault` | GitHub repo | Git-based cloud sync variant |
 | `heyitsnoah/claudesidian` | GitHub repo | Pre-configured vault structure |
-| `SamurAIGPT/llm-wiki-agent` | GitHub repo | Full agent implementation |
+| `SamurAIGPT/llm-wiki-agent` | Multi-agent repo | Full agent implementation (~3,500+ stars, multi-platform, ingest-time contradiction detection) |
+| `GD4AI/obsidian-llm-wiki` | Obsidian plugin | Community plugin integrating LLM Wiki workflows directly in Obsidian editor UI (~580+ stars) |
+| `praneybehl/llm-wiki-plugin` | Plugin / Skill | Agent skill & Claude Code plugin turning accumulated sources into a markdown knowledge base (~100 stars) |
+| `Astro-Han/karpathy-llm-wiki` | Agent Skill repo | Agent Skills-compatible tool for Claude Code, Cursor, and Codex with citations and linting (~2,170+ stars) |
+| `tonbistudio/llm-wiki` | Template repo | Open-source markdown template implementing the core LLM Wiki pattern (~250 stars) |
+| `lucasastorian/llmwiki` | MCP repo | Open-source MCP implementation connecting Claude accounts to write and maintain the wiki (~1,580+ stars) |
+| `nashsu/llm_wiki` | Desktop app | Cross-platform desktop application compiling and maintaining a persistent local wiki (~17,580+ stars) |
+| `balukosuri/wiki-from-code-with-llm-wiki-karpathy` | GitHub repo / Hook | "Docs From Code" variant ingesting codebase changes via background git post-commit hooks |
+| `ProfSynapse/nexus` | MCP server | Model Context Protocol bridge connecting Claude Code to Obsidian (successor to `claudesidian-mcp`) |
+| `Ar9av/obsidian-wiki` | Framework repo | Framework for AI agents to build and maintain a digital brain through Obsidian (~3,370+ stars) |
+| `vercel-labs/skills` | Standard | Cross-agent skill installer standard (`npx skills add`) across 20+ environments |
 | Karpathy's `.brain` pattern | Gist discussion | Lightweight project-scoped variant (see CLAUDE.md discussion tab) |
+
+> **The `.brain` Pattern:** A notable lightweight variant that emerged from the gist discussion is the `.brain` pattern. Rather than maintaining an independent standalone Obsidian vault, developers embed a `.brain/` directory directly into specific software repositories. This scopes the LLM Wiki's three core operations (ingest, query, lint) strictly to project-specific architectural records, API contracts, and decision logs.
 
 ---
 
 ## 20. Sources
 
-1. Andrej Karpathy, "LLM Wiki" — GitHub Gist, April 2026: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
+1. Andrej Karpathy, "LLM Wiki" — GitHub Gist (5,000+ stars, 5,000+ forks, unchanged since April 2026 Revision 1), April 2026: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
 2. Antigravity.codes, "Karpathy's LLM Wiki: The Complete Guide to His Idea File," April 2026: https://antigravity.codes/blog/karpathy-llm-wiki-idea-file
 3. Starmorph, "Obsidian + Claude Code: The Complete Integration Guide," April 2026: https://blog.starmorph.com/blog/obsidian-claude-code-integration-guide
 4. Matt Paige, "Andrej Karpathy Just Showed Us How to Build an AI Second Brain," April 2026: https://mattpaige68.substack.com/p/andrej-karpathy-just-showed-us-how
